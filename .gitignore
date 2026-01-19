@@ -20,6 +20,7 @@ build/
 # Vercel
 .vercel
 !**/.vercel/
+**/.vercel/*
 !**/.vercel/project.json
 
 # Logs
