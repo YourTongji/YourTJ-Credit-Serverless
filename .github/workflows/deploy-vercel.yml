@@ -1,0 +1,44 @@
+name: Deploy (Vercel)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: npx vercel@latest deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"
+
+  deploy-backend-core:
+    name: Deploy Backend Core
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-core
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: npx vercel@latest deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"
+
+  deploy-backend-market:
+    name: Deploy Backend Market
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-market
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: npx vercel@latest deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"

@@ -1,0 +1,28 @@
+{
+  "name": "yourtj-credit-backend",
+  "version": "1.0.0",
+  "description": "YourTJ Credit Backend - Serverless API for decentralized credit system",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "yourtj",
+    "credit",
+    "blockchain",
+    "wallet",
+    "serverless"
+  ],
+  "author": "YourTJ Team",
+  "license": "MIT",
+  "dependencies": {
+    "@libsql/client": "^0.4.0",
+    "@vercel/node": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vercel": "^33.0.0"
+  }
+}
