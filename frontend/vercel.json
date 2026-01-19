@@ -2,35 +2,39 @@
   "routes": [
     {
       "src": "/api/admin/(.*)",
-      "dest": "https://yourtj-credit-backend-core.vercel.app/api/admin/$1"
+      "dest": "https://core.credit.yourtj.de/api/admin/$1"
     },
     {
       "src": "/api/redeem",
-      "dest": "https://yourtj-credit-backend-core.vercel.app/api/redeem"
+      "dest": "https://core.credit.yourtj.de/api/redeem"
     },
     {
       "src": "/api/wallet/(.*)",
-      "dest": "https://yourtj-credit-backend-core.vercel.app/api/wallet/$1"
+      "dest": "https://core.credit.yourtj.de/api/wallet/$1"
     },
     {
       "src": "/api/transaction/(.*)",
-      "dest": "https://yourtj-credit-backend-core.vercel.app/api/transaction/$1"
+      "dest": "https://core.credit.yourtj.de/api/transaction/$1"
+    },
+    {
+      "src": "/api/wordlist$",
+      "dest": "https://core.credit.yourtj.de/api/wordlist"
     },
     {
       "src": "/api/wordlist/(.*)",
-      "dest": "https://yourtj-credit-backend-core.vercel.app/api/wordlist/$1"
+      "dest": "https://core.credit.yourtj.de/api/wordlist/$1"
     },
     {
       "src": "/api/task/(.*)",
-      "dest": "https://yourtj-credit-backend-market.vercel.app/api/task/$1"
+      "dest": "https://market.credit.yourtj.de/api/task/$1"
     },
     {
       "src": "/api/product/(.*)",
-      "dest": "https://yourtj-credit-backend-market.vercel.app/api/product/$1"
+      "dest": "https://market.credit.yourtj.de/api/product/$1"
     },
     {
       "src": "/api/report/(.*)",
-      "dest": "https://yourtj-credit-backend-market.vercel.app/api/report/$1"
+      "dest": "https://market.credit.yourtj.de/api/report/$1"
     },
     { "handle": "filesystem" },
     {
@@ -39,4 +43,3 @@
     }
   ]
 }
-
