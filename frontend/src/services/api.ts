@@ -33,6 +33,12 @@ function normalizeBase(base: string): string {
 }
 
 function getBaseForPath(path: string): string {
+  // Production on Vercel: always prefer same-origin `/api/*` so clients only need to reach the frontend domain.
+  // This avoids cross-domain fetch issues in certain networks (e.g. `*.vercel.app` blocked) and lets `vercel.json` handle routing.
+  if (import.meta.env.PROD && typeof window !== 'undefined' && path.startsWith('/api/')) {
+    return '';
+  }
+
   if (
     path.startsWith('/api/task') ||
     path.startsWith('/api/product') ||
