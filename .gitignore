@@ -10,6 +10,9 @@ coverage/
 dist/
 build/
 
+# Deprecated (split backend is in backend-core/ and backend-market/)
+backend/
+
 # Environment variables
 .env
 .env.local
