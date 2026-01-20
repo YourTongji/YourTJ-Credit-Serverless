@@ -32,7 +32,7 @@
 创建 token：
 `Vercel Dashboard → Account Settings → Tokens → Create`
 
-> 提醒：你在聊天里粘贴过 token，建议立刻在 Vercel 把旧 token Revoke/Rotate，然后把新 token 只放到 GitHub Secret 里。
+> 提醒：如果 token 曾经在任何地方泄露（聊天/截图/日志等），建议立刻在 Vercel 把旧 token Revoke/Rotate，然后把新 token 只放到 GitHub Secret 里。
 
 ### 部署原理
 GitHub Actions 会在三个子目录分别执行：
