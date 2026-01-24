@@ -1,0 +1,44 @@
+name: JCourse Like Settlement (Daily)
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "结算日期（Asia/Shanghai），格式 YYYY-MM-DD；留空则默认昨天"
+        required: false
+        type: string
+  schedule:
+    # 00:05 Asia/Shanghai = 16:05 UTC
+    - cron: "5 16 * * *"
+
+jobs:
+  settle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Settle likes
+        env:
+          CREDIT_CORE_BASE: https://core.credit.yourtj.de
+          JCOURSE_INTEGRATION_SECRET: ${{ secrets.JCOURSE_INTEGRATION_SECRET }}
+          INPUT_DATE: ${{ inputs.date }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${JCOURSE_INTEGRATION_SECRET:-}" ]; then
+            echo "Missing secrets.JCOURSE_INTEGRATION_SECRET" >&2
+            exit 1
+          fi
+
+          if [ -n "${INPUT_DATE:-}" ]; then
+            DATE="${INPUT_DATE}"
+          else
+            DATE="$(TZ=Asia/Shanghai date -d 'yesterday' +%F)"
+          fi
+
+          echo "Settling date: ${DATE}"
+
+          curl -sS -X POST "${CREDIT_CORE_BASE}/api/integration/jcourse/settle" \
+            -H "Content-Type: application/json" \
+            -H "X-JCourse-Secret: ${JCOURSE_INTEGRATION_SECRET}" \
+            --data "{\"date\":\"${DATE}\"}" \
+            | tee settle-result.json
+

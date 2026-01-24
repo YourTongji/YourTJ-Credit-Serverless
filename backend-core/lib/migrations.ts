@@ -137,6 +137,56 @@ async function ensureRedeemTables(db: DbClient) {
   await db.execute('CREATE INDEX IF NOT EXISTS idx_redeem_redemptions_code ON redeem_redemptions(code_hash);');
 }
 
+async function ensureJcourseIntegrationTables(db: DbClient) {
+  // 选课站（YOURTJ 选课社区）积分联动：事件去重 + 点赞日结
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS jcourse_events (
+      event_id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      user_hash TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      tx_id TEXT,
+      metadata TEXT,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    );
+  `);
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_jcourse_events_user_hash ON jcourse_events(user_hash);');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_jcourse_events_kind ON jcourse_events(kind);');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_jcourse_events_created_at ON jcourse_events(created_at);');
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS jcourse_review_likes (
+      review_id TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      target_user_hash TEXT NOT NULL,
+      is_liked INTEGER NOT NULL DEFAULT 1,
+      settled_is_liked INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+      settled_at INTEGER,
+      last_settle_date TEXT,
+      PRIMARY KEY (review_id, actor_id)
+    );
+  `);
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_jcourse_review_likes_target ON jcourse_review_likes(target_user_hash);');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_jcourse_review_likes_updated ON jcourse_review_likes(updated_at);');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_jcourse_review_likes_settle_date ON jcourse_review_likes(last_settle_date);');
+
+  // 兼容早期版本：补齐列
+  if (await tableExists(db, 'jcourse_review_likes')) {
+    const columns = await getTableColumns(db, 'jcourse_review_likes');
+    if (!columns.has('settled_is_liked')) {
+      await db.execute('ALTER TABLE jcourse_review_likes ADD COLUMN settled_is_liked INTEGER NOT NULL DEFAULT 0;');
+    }
+    if (!columns.has('settled_at')) {
+      await db.execute('ALTER TABLE jcourse_review_likes ADD COLUMN settled_at INTEGER;');
+    }
+    if (!columns.has('last_settle_date')) {
+      await db.execute('ALTER TABLE jcourse_review_likes ADD COLUMN last_settle_date TEXT;');
+    }
+  }
+}
+
 async function maybeCleanupExpiredData(db: DbClient) {
   const nowSec = Math.floor(Date.now() / 1000);
 
@@ -192,6 +242,7 @@ export async function ensureSchemaForDatabase(db: DbClient): Promise<void> {
     await ensureContentReportsTable(db);
     await ensureRecoveryCasesTable(db);
     await ensureRedeemTables(db);
+    await ensureJcourseIntegrationTables(db);
     await maybeCleanupExpiredData(db);
     schemaEnsured = true;
     ensurePromise = null;

@@ -11,7 +11,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Hash, X-Signature, X-Timestamp, X-Nonce, X-Admin-Token',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Hash, X-Signature, X-Timestamp, X-Nonce, X-Admin-Token, X-JCourse-Secret',
   'Access-Control-Max-Age': '86400',
 };
 
