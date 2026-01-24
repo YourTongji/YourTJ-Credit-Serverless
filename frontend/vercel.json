@@ -17,6 +17,10 @@
       "dest": "https://core.credit.yourtj.de/api/transaction/$1"
     },
     {
+      "src": "/api/integration/(.*)",
+      "dest": "https://core.credit.yourtj.de/api/integration/$1"
+    },
+    {
       "src": "/api/wordlist$",
       "dest": "https://core.credit.yourtj.de/api/wordlist"
     },

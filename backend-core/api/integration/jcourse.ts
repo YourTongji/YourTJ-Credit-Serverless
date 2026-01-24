@@ -157,8 +157,8 @@ async function handleEvent(req: VercelRequest, res: VercelResponse) {
       const txId = await createSystemRewardTx({
         toUserHash: userHash,
         amount,
-        title: 'YOURTJ 点评奖励',
-        description: 'YOURTJ 选课社区：50 字以上点评奖励',
+        title: 'YOURTJ 评课激励',
+        description: 'YOURTJ 选课社区：50 字以上点评评课激励',
         metadata
       });
       await execute(
@@ -346,8 +346,8 @@ async function handleSettle(req: VercelRequest, res: VercelResponse) {
           txId,
           s.userHash,
           s.delta,
-          'YOURTJ 点赞结算',
-          `YOURTJ 选课社区：${date} 点赞积分日结`,
+          'YOURTJ 评课激励（点赞）',
+          `YOURTJ 选课社区：${date} 点赞评课激励日结`,
           JSON.stringify(metadata),
           now,
           now
@@ -411,4 +411,3 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
 }
 
 export default withCors(handler);
-
