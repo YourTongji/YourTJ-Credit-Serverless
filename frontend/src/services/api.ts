@@ -322,6 +322,18 @@ export async function createProduct(
   return handleResponse<any>(response);
 }
 
+export async function takeDownProduct(productId: string, headers: Record<string, string>): Promise<Product> {
+  const response = await fetchWithTimeout(buildApiUrl('/api/product/create'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers
+    },
+    body: JSON.stringify({ action: 'take_down', productId })
+  });
+  return handleResponse<Product>(response);
+}
+
 /**
  * 获取商品列表
  */
@@ -621,6 +633,40 @@ export async function adminDisableRedeemCode(payload: { code?: string; codeHash?
     body: JSON.stringify({ op: 'disable', ...payload })
   });
   return handleResponse<any>(response);
+}
+
+export async function adminGetWebhookConfig(token: string): Promise<{ webhookUrl: string; hasSecret: boolean }> {
+  const response = await fetchWithTimeout(buildApiUrl('/api/admin/webhook'), {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return handleResponse<{ webhookUrl: string; hasSecret: boolean }>(response);
+}
+
+export async function adminUpdateWebhookConfig(
+  payload: { webhookUrl?: string; secret?: string },
+  token: string
+): Promise<{ webhookUrl: string; hasSecret: boolean }> {
+  const response = await fetchWithTimeout(buildApiUrl('/api/admin/webhook'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+  return handleResponse<{ webhookUrl: string; hasSecret: boolean }>(response);
+}
+
+export async function adminTestWebhook(token: string): Promise<{ ok: boolean; status?: number; responseSnippet?: string; error?: string }> {
+  const response = await fetchWithTimeout(buildApiUrl('/api/admin/webhook/test'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({})
+  });
+  return handleResponse<{ ok: boolean; status?: number; responseSnippet?: string; error?: string }>(response);
 }
 
 export async function redeemCode(code: string, headers: Record<string, string>): Promise<any> {

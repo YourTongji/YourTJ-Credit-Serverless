@@ -13,13 +13,16 @@ import {
   adminCreateRedeemCode,
   adminDisableRedeemCode,
   adminGetReport,
+  adminGetWebhookConfig,
   adminGetUser,
   adminHandleReport,
   adminListRecovery,
   adminListRedeemCodes,
   adminListReports,
   adminLogin,
-  adminRecoverCase
+  adminRecoverCase,
+  adminTestWebhook,
+  adminUpdateWebhookConfig
 } from '../services/api';
 import { ModalPortal } from '../components/ModalPortal';
 
@@ -156,6 +159,10 @@ export function AdminPage() {
 
   // 设置
   const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecretInput, setWebhookSecretInput] = useState('');
+  const [webhookHasSecret, setWebhookHasSecret] = useState(false);
+  const [webhookLoaded, setWebhookLoaded] = useState(false);
 
   const tabs = useMemo(
     () =>
@@ -173,6 +180,25 @@ export function AdminPage() {
   useEffect(() => {
     writeStoredAdminToken(token);
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (tab !== 'settings') return;
+    if (webhookLoaded) return;
+
+    setBusy(true);
+    adminGetWebhookConfig(token)
+      .then((cfg) => {
+        setWebhookUrl(String(cfg?.webhookUrl || ''));
+        setWebhookHasSecret(Boolean(cfg?.hasSecret));
+        setWebhookLoaded(true);
+      })
+      .catch((e) => {
+        showErr(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => setBusy(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, token, webhookLoaded]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
@@ -228,6 +254,55 @@ export function AdminPage() {
   function showErr(text: string) {
     setToast({ type: 'err', text });
     window.setTimeout(() => setToast(null), 3600);
+  }
+
+  async function doSaveWebhook() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const payload: { webhookUrl?: string; secret?: string } = { webhookUrl: webhookUrl.trim() };
+      const secret = webhookSecretInput.trim();
+      if (secret) payload.secret = secret;
+      const next = await adminUpdateWebhookConfig(payload, token);
+      setWebhookUrl(String(next?.webhookUrl || ''));
+      setWebhookHasSecret(Boolean(next?.hasSecret));
+      setWebhookSecretInput('');
+      showOk('Webhook 设置已保存');
+    } catch (e) {
+      showErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doClearWebhookSecret() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const next = await adminUpdateWebhookConfig({ secret: '' }, token);
+      setWebhookUrl(String(next?.webhookUrl || ''));
+      setWebhookHasSecret(Boolean(next?.hasSecret));
+      setWebhookSecretInput('');
+      showOk('签名密钥已清除');
+    } catch (e) {
+      showErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doTestWebhook() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const result = await adminTestWebhook(token);
+      if (result.ok) showOk('测试卡片已发送（请到飞书群查看）');
+      else showErr(`测试发送失败：${result.error || result.responseSnippet || 'unknown error'}`);
+    } catch (e) {
+      showErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const toastNode = toast ? (
@@ -1163,6 +1238,55 @@ export function AdminPage() {
                           >
                             更新密码
                           </button>
+                        </div>
+
+                        <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-4">
+                          <div className="text-sm font-bold text-slate-900 dark:text-white mb-1">Webhook 通知（飞书机器人）</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                            保存后立即生效；未配置时会回退到 Vercel 环境变量（如 FEISHU_WEBHOOK_URL）。
+                          </div>
+
+                          <label className="block text-xs text-slate-500 mb-1">Webhook 地址</label>
+                          <input
+                            value={webhookUrl}
+                            onChange={(e) => setWebhookUrl(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl border border-black/10 dark:border-white/10 bg-white/80 dark:bg-[#111]/60 text-sm"
+                            placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..."
+                          />
+
+                          <label className="mt-3 block text-xs text-slate-500 mb-1">签名密钥（可选）</label>
+                          <input
+                            value={webhookSecretInput}
+                            onChange={(e) => setWebhookSecretInput(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl border border-black/10 dark:border-white/10 bg-white/80 dark:bg-[#111]/60 text-sm"
+                            type="password"
+                            placeholder={webhookHasSecret ? '已设置（留空不修改，输入新值可覆盖）' : '未设置（留空不启用签名）'}
+                            autoComplete="off"
+                          />
+
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <button
+                              onClick={() => void doSaveWebhook()}
+                              disabled={busy}
+                              className="py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white font-semibold transition-colors disabled:opacity-50"
+                            >
+                              保存
+                            </button>
+                            <button
+                              onClick={() => void doTestWebhook()}
+                              disabled={busy || !webhookUrl.trim()}
+                              className="py-2.5 rounded-xl bg-white/70 dark:bg-white/10 border border-black/10 dark:border-white/10 text-slate-700 dark:text-slate-200 font-semibold hover:bg-white/90 dark:hover:bg-white/15 transition-colors disabled:opacity-50"
+                            >
+                              发送测试
+                            </button>
+                            <button
+                              onClick={() => void doClearWebhookSecret()}
+                              disabled={busy || !webhookHasSecret}
+                              className="py-2.5 rounded-xl bg-white/70 dark:bg-white/10 border border-black/10 dark:border-white/10 text-rose-700 dark:text-rose-200 font-semibold hover:bg-white/90 dark:hover:bg-white/15 transition-colors disabled:opacity-50"
+                            >
+                              清除密钥
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ) : (

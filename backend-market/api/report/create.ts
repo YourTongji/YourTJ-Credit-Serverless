@@ -22,8 +22,27 @@ type FeishuSendResult = {
 type FeishuField = { label: string; value: string; short?: boolean; style?: 'code' | 'text' };
 
 const FEISHU_CARD_LOGO_IMG_KEY = 'img_v3_02u9_4ca7644a-997d-4963-9d6a-30043ca697eg';
+const FEISHU_SETTINGS_WEBHOOK_URL_KEY = 'feishu_webhook_url';
+const FEISHU_SETTINGS_WEBHOOK_SECRET_KEY = 'feishu_webhook_secret';
 
-function getFeishuConfig(): FeishuConfig | null {
+async function getFeishuConfig(): Promise<FeishuConfig | null> {
+  // Prefer DB settings (hot update), fallback to Vercel env vars.
+  try {
+    const rowUrl = await queryOne<any>('SELECT value FROM settings WHERE key = ? LIMIT 1', [
+      FEISHU_SETTINGS_WEBHOOK_URL_KEY
+    ]);
+    const dbUrl = rowUrl?.value ? String(rowUrl.value).trim() : '';
+    if (dbUrl) {
+      const rowSecret = await queryOne<any>('SELECT value FROM settings WHERE key = ? LIMIT 1', [
+        FEISHU_SETTINGS_WEBHOOK_SECRET_KEY
+      ]);
+      const dbSecret = rowSecret?.value ? String(rowSecret.value).trim() : '';
+      return dbSecret ? { webhookUrl: dbUrl, secret: dbSecret } : { webhookUrl: dbUrl };
+    }
+  } catch {
+    // ignore: DB may be unavailable, or settings table missing in some deployments
+  }
+
   const webhookUrl = (process.env.FEISHU_WEBHOOK_URL || '').trim();
   const secret = (process.env.FEISHU_WEBHOOK_SECRET || '').trim();
   if (!webhookUrl) return null;
@@ -161,15 +180,10 @@ function buildFeishuInteractiveBody(
     })),
     { tag: 'hr' },
     {
-      tag: 'action',
-      actions: [
-        {
-          tag: 'button',
-          type: 'primary',
-          text: { tag: 'plain_text', content: '进入后台审核' },
-          url: payload.adminUrl
-        }
-      ]
+      tag: 'button',
+      type: 'primary',
+      text: { tag: 'plain_text', content: '进入后台审核' },
+      url: payload.adminUrl
     }
   ];
 
@@ -214,7 +228,7 @@ async function notifyFeishuIfEnabled(
   req: VercelRequest,
   payload: { kind: 'transaction' | 'content'; reportId: string; title: string; fields: FeishuField[] }
 ): Promise<FeishuSendResult> {
-  const cfg = getFeishuConfig();
+  const cfg = await getFeishuConfig();
   if (!cfg) return { enabled: false };
 
   const base = pickFrontendBase(req);
@@ -411,9 +425,13 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
         fields: [
           { label: '举报编号', value: reportId, short: true, style: 'code' },
           { label: '交易编号', value: txId, short: true, style: 'code' },
+          { label: '举报类型', value: type, short: true, style: 'code' },
+          { label: '当前状态', value: 'pending', short: true, style: 'code' },
           { label: '付款方(from)', value: transaction.from_user_hash || '—', short: true, style: 'code' },
           { label: '收款方(to)', value: transaction.to_user_hash || '—', short: true, style: 'code' },
           { label: '金额', value: String(transaction.amount ?? '—'), short: true, style: 'code' },
+          ...(transaction.title ? [{ label: '交易标题', value: String(transaction.title), short: false, style: 'text' } as const] : []),
+          ...(transaction.status ? [{ label: '交易状态', value: String(transaction.status), short: true, style: 'code' } as const] : []),
           { label: '理由', value: reason, short: false, style: 'text' },
           ...(description ? [{ label: '描述', value: description, short: false, style: 'text' } as const] : [])
         ]
@@ -506,6 +524,8 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
       fields: [
         { label: '举报编号', value: reportId, short: true, style: 'code' },
         { label: '对象类型', value: resolvedTargetType, short: true, style: 'code' },
+        { label: '举报类型', value: type, short: true, style: 'code' },
+        { label: '当前状态', value: 'pending', short: true, style: 'code' },
         { label: '对象编号', value: resolvedTargetId, short: true, style: 'code' },
         ...(targetTitle ? [{ label: '标题', value: targetTitle, short: false, style: 'text' } as const] : []),
         ...(targetDescription ? [{ label: '内容描述', value: targetDescription, short: false, style: 'text' } as const] : []),

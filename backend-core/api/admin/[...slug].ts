@@ -13,6 +13,10 @@ import { hashAdminPassword, signAdminJwt, verifyAdminJwt, verifyAdminPassword } 
 
 type Json = Record<string, any>;
 
+const FEISHU_SETTINGS_WEBHOOK_URL_KEY = 'feishu_webhook_url';
+const FEISHU_SETTINGS_WEBHOOK_SECRET_KEY = 'feishu_webhook_secret';
+const FEISHU_CARD_LOGO_IMG_KEY = 'img_v3_02u9_4ca7644a-997d-4963-9d6a-30043ca697eg';
+
 function json(res: VercelResponse, status: number, body: Json) {
   res.status(status).json(body);
 }
@@ -95,6 +99,11 @@ async function upsertSetting(key: string, value: string, description?: string) {
 
 function hmacSha256Hex(secret: string, input: string): string {
   return crypto.createHmac('sha256', secret).update(input, 'utf8').digest('hex');
+}
+
+function signFeishuBot(timestampSec: string, secret: string): string {
+  const stringToSign = `${timestampSec}\n${secret}`;
+  return crypto.createHmac('sha256', stringToSign).update('').digest('base64');
 }
 
 function makeCodeHint(code: string): string {
@@ -216,6 +225,128 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
 
     // 以下均需管理鉴权
     if (!(await requireAdmin(req, res))) return;
+
+    // GET /api/admin/webhook
+    if (route === 'webhook' && req.method === 'GET') {
+      const webhookUrl = String((await getSetting(FEISHU_SETTINGS_WEBHOOK_URL_KEY)) || '').trim();
+      const secret = String((await getSetting(FEISHU_SETTINGS_WEBHOOK_SECRET_KEY)) || '').trim();
+      json(res, 200, { success: true, data: { webhookUrl, hasSecret: Boolean(secret) } });
+      return;
+    }
+
+    // POST /api/admin/webhook
+    if (route === 'webhook' && req.method === 'POST') {
+      const body = await readJsonBody<any>(req);
+      const hasUrl = Object.prototype.hasOwnProperty.call(body || {}, 'webhookUrl');
+      const hasSecret = Object.prototype.hasOwnProperty.call(body || {}, 'secret');
+
+      if (hasUrl) {
+        const webhookUrl = String(body?.webhookUrl || '').trim();
+        if (webhookUrl) {
+          await upsertSetting(FEISHU_SETTINGS_WEBHOOK_URL_KEY, webhookUrl, '飞书机器人 Webhook 地址（管理后台可配置）');
+        } else {
+          await execute('DELETE FROM settings WHERE key = ?', [FEISHU_SETTINGS_WEBHOOK_URL_KEY]);
+        }
+      }
+
+      if (hasSecret) {
+        const secret = String(body?.secret || '').trim();
+        if (secret) {
+          await upsertSetting(FEISHU_SETTINGS_WEBHOOK_SECRET_KEY, secret, '飞书机器人签名密钥（管理后台可配置）');
+        } else {
+          await execute('DELETE FROM settings WHERE key = ?', [FEISHU_SETTINGS_WEBHOOK_SECRET_KEY]);
+        }
+      }
+
+      const webhookUrl = String((await getSetting(FEISHU_SETTINGS_WEBHOOK_URL_KEY)) || '').trim();
+      const secret = String((await getSetting(FEISHU_SETTINGS_WEBHOOK_SECRET_KEY)) || '').trim();
+      json(res, 200, { success: true, data: { webhookUrl, hasSecret: Boolean(secret) } });
+      return;
+    }
+
+    // POST /api/admin/webhook/test
+    if (route === 'webhook/test' && req.method === 'POST') {
+      const webhookUrl =
+        String((await getSetting(FEISHU_SETTINGS_WEBHOOK_URL_KEY)) || '').trim() || String(process.env.FEISHU_WEBHOOK_URL || '').trim();
+      const secret =
+        String((await getSetting(FEISHU_SETTINGS_WEBHOOK_SECRET_KEY)) || '').trim() ||
+        String(process.env.FEISHU_WEBHOOK_SECRET || '').trim();
+
+      if (!webhookUrl) {
+        json(res, 400, { success: false, error: '未配置飞书 Webhook 地址' });
+        return;
+      }
+
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const card: any = {
+        msg_type: 'interactive',
+        card: {
+          schema: '2.0',
+          config: {
+            update_multi: true,
+            enable_forward: true,
+            width_mode: 'fill',
+            summary: { content: 'YOURTJ Credit Webhook 测试' }
+          },
+          header: {
+            template: 'wathet',
+            icon: { tag: 'custom_icon', img_key: FEISHU_CARD_LOGO_IMG_KEY },
+            title: { tag: 'plain_text', content: 'YOURTJ Credit Webhook 测试' },
+            subtitle: { tag: 'plain_text', content: '这是一条来自管理后台的测试消息' },
+            padding: '12px 12px 12px 12px'
+          },
+          body: {
+            direction: 'vertical',
+            padding: '12px 12px 12px 12px',
+            horizontal_spacing: '8px',
+            vertical_spacing: '8px',
+            horizontal_align: 'left',
+            vertical_align: 'top',
+            elements: [
+              { tag: 'markdown', content: `**发送时间**\\n${new Date().toLocaleString('zh-CN')}`, text_align: 'left' },
+              { tag: 'markdown', content: `**来源**\\n管理后台 /api/admin/webhook/test`, text_align: 'left' },
+              { tag: 'hr' },
+              {
+                tag: 'button',
+                type: 'primary',
+                text: { tag: 'plain_text', content: '打开管理后台' },
+                url: `${String(process.env.PUBLIC_FRONTEND_URL || '').trim() || 'https://credit.yourtj.de'}/#/admin`
+              }
+            ]
+          }
+        }
+      };
+
+      if (secret) {
+        card.timestamp = timestamp;
+        card.sign = signFeishuBot(timestamp, secret);
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const resp = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(card),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        const text = await resp.text().catch(() => '');
+        const snippet = text.slice(0, 300);
+        let ok = resp.ok;
+        try {
+          const parsed = JSON.parse(text || '{}') as any;
+          if (typeof parsed?.code === 'number' && parsed.code !== 0) ok = false;
+        } catch {
+          // ignore
+        }
+        json(res, 200, { success: true, data: { ok, status: resp.status, responseSnippet: snippet } });
+      } catch (e) {
+        json(res, 200, { success: true, data: { ok: false, error: e instanceof Error ? e.message : String(e) } });
+      }
+      return;
+    }
 
     // GET /api/admin/reports?kind=transaction|content&status=&page=&limit=
     if (route === 'reports' && req.method === 'GET') {

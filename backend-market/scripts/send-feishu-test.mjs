@@ -2,6 +2,8 @@ import crypto from 'node:crypto'
 
 const args = new Set(process.argv.slice(2))
 const dryRun = args.has('--dry-run') || args.has('--print')
+const kindArg = Array.from(args).find((a) => a.startsWith('--kind='))
+const kind = kindArg ? String(kindArg.split('=')[1] || '').trim() : 'both'
 
 const webhookUrl = (process.env.FEISHU_WEBHOOK_URL || '').trim()
 const secret = (process.env.FEISHU_WEBHOOK_SECRET || '').trim()
@@ -64,15 +66,10 @@ function buildCard({ title, fields, adminUrl }) {
     })),
     { tag: 'hr' },
     {
-      tag: 'action',
-      actions: [
-        {
-          tag: 'button',
-          type: 'primary',
-          text: { tag: 'plain_text', content: '进入后台审核' },
-          url: adminUrl,
-        },
-      ],
+      tag: 'button',
+      type: 'primary',
+      text: { tag: 'plain_text', content: '进入后台审核' },
+      url: adminUrl,
     },
   ]
 
@@ -107,26 +104,51 @@ function buildCard({ title, fields, adminUrl }) {
 }
 
 const now = new Date()
-const payload = buildCard({
+const contentPayload = buildCard({
   title: '内容举报（测试卡片）',
   adminUrl: 'https://credit.yourtj.de/#/admin?tab=contentReports&reportId=TEST',
   fields: [
-    cardField('举报编号', `TEST-${now.getTime()}`, { short: true, style: 'code' }),
+    cardField('举报编号', `RPT-TEST-${now.getTime()}`, { short: true, style: 'code' }),
     cardField('对象类型', 'task', { short: true, style: 'code' }),
-    cardField('对象编号', 'task_123', { short: true, style: 'code' }),
-    cardField('举报人', 'user_hash_xxx', { short: true, style: 'code' }),
-    cardField('理由', '这是一条用于预览飞书卡片样式的测试通知。', { short: false, style: 'text' }),
+    cardField('举报类型', 'report', { short: true, style: 'code' }),
+    cardField('当前状态', 'pending', { short: true, style: 'code' }),
+    cardField('对象编号', 'TASK-TEST-001', { short: true, style: 'code' }),
+    cardField('发布者', '15ab2799...1826b7', { short: true, style: 'code' }),
+    cardField('举报人', '72b4ba68...4cbb1e', { short: true, style: 'code' }),
+    cardField('标题', '收二手书', { short: false, style: 'text' }),
+    cardField('内容描述', 'rt', { short: false, style: 'text' }),
+    cardField('理由', '不让收', { short: false, style: 'text' }),
+    cardField('描述', '不让你收', { short: false, style: 'text' }),
   ],
 })
 
-if (secret) {
+const txPayload = buildCard({
+  title: '交易举报（测试卡片）',
+  adminUrl: 'https://credit.yourtj.de/#/admin?tab=txReports&reportId=TEST',
+  fields: [
+    cardField('举报编号', `RPT-TX-${now.getTime()}`, { short: true, style: 'code' }),
+    cardField('交易编号', `TX-${now.getTime()}`, { short: true, style: 'code' }),
+    cardField('举报类型', 'report', { short: true, style: 'code' }),
+    cardField('当前状态', 'pending', { short: true, style: 'code' }),
+    cardField('付款方(from)', '75f9a7a7...e81372', { short: true, style: 'code' }),
+    cardField('收款方(to)', '1776d490...f6cb9f', { short: true, style: 'code' }),
+    cardField('金额', '30', { short: true, style: 'code' }),
+    cardField('理由', 'smoke tx report', { short: false, style: 'text' }),
+    cardField('描述', 'smoke admin flow', { short: false, style: 'text' }),
+  ],
+})
+
+function attachSign(payload) {
+  if (!secret) return payload
   const timestamp = String(Math.floor(Date.now() / 1000))
   payload.timestamp = timestamp
   payload.sign = signFeishu(timestamp, secret)
+  return payload
 }
 
 if (dryRun) {
-  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+  const out = kind === 'transaction' ? txPayload : kind === 'content' ? contentPayload : { content: contentPayload, transaction: txPayload }
+  process.stdout.write(`${JSON.stringify(out, null, 2)}\n`)
   process.exit(0)
 }
 
@@ -135,18 +157,28 @@ if (!webhookUrl) {
   process.exit(1)
 }
 
-const res = await fetch(webhookUrl, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(payload),
-})
-
-const text = await res.text().catch(() => '')
-if (!res.ok) {
-  console.error(`Feishu webhook failed: HTTP ${res.status}`)
-  console.error(text.slice(0, 500))
-  process.exit(1)
+async function send(payload) {
+  const finalPayload = attachSign(payload)
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(finalPayload),
+  })
+  const text = await res.text().catch(() => '')
+  if (!res.ok) {
+    console.error(`Feishu webhook failed: HTTP ${res.status}`)
+    console.error(text.slice(0, 500))
+    process.exit(1)
+  }
+  console.log(`Sent. HTTP ${res.status}`)
+  console.log(text.slice(0, 500))
 }
 
-console.log(`Sent. HTTP ${res.status}`)
-console.log(text.slice(0, 500))
+if (kind === 'transaction') {
+  await send(txPayload)
+} else if (kind === 'content') {
+  await send(contentPayload)
+} else {
+  await send(contentPayload)
+  await send(txPayload)
+}

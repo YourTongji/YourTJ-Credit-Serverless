@@ -17,29 +17,7 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
       return;
     }
 
-    const body = await readJsonBody<ProductCreateParams>(req);
-    const { title, description, deliveryInfo, price, stock } = body;
-
-    // 验证参数
-    if (!title || !description || !price || stock === undefined) {
-      res.status(400).json({ success: false, error: '缺少必要参数' });
-      return;
-    }
-
-    if (price <= 0) {
-      res.status(400).json({ success: false, error: '商品价格必须大于0' });
-      return;
-    }
-
-    if (stock < 0) {
-      res.status(400).json({ success: false, error: '库存数量不能为负数' });
-      return;
-    }
-
-    if (deliveryInfo && String(deliveryInfo).length > 500) {
-      res.status(400).json({ success: false, error: '发货信息过长' });
-      return;
-    }
+    const body = await readJsonBody<any>(req);
 
     // 获取请求头
     const userHash = req.headers['x-user-hash'] as string;
@@ -64,6 +42,93 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     }
     if (!sellerWallet.user_secret) {
       res.status(400).json({ success: false, error: '钱包未绑定密钥，无法进行签名验证' });
+      return;
+    }
+
+    // 下架商品（卖家自助）
+    if (String(body?.action || '') === 'take_down') {
+      const productId = String(body?.productId || '').trim();
+      if (!productId) {
+        res.status(400).json({ success: false, error: '缺少商品编号' });
+        return;
+      }
+
+      const verifyResult = await verifySignedRequest(
+        { action: 'take_down', productId },
+        {
+          'x-user-hash': userHash,
+          'x-signature': signature,
+          'x-timestamp': timestampHeader,
+          'x-nonce': nonceHeader
+        },
+        sellerWallet.user_secret
+      );
+
+      if (!verifyResult.valid) {
+        res.status(401).json({
+          success: false,
+          error: verifyResult.error || '签名验证失败'
+        });
+        return;
+      }
+
+      const product = await queryOne<any>('SELECT * FROM products WHERE product_id = ?', [productId]);
+      if (!product) {
+        res.status(404).json({ success: false, error: '商品不存在' });
+        return;
+      }
+      if (String(product.seller_user_hash || '') !== userHash) {
+        res.status(403).json({ success: false, error: '只能下架自己发布的商品' });
+        return;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      await execute('UPDATE products SET status = ?, updated_at = ? WHERE product_id = ?', ['removed', now, productId]);
+
+      const updated = await queryOne<any>('SELECT * FROM products WHERE product_id = ?', [productId]);
+      if (!updated) {
+        res.status(500).json({ success: false, error: '商品下架失败' });
+        return;
+      }
+
+      const out: Product = {
+        id: updated.id,
+        productId: updated.product_id,
+        sellerUserHash: updated.seller_user_hash,
+        title: updated.title,
+        description: updated.description,
+        deliveryInfo: undefined,
+        price: updated.price,
+        stock: updated.stock,
+        status: updated.status,
+        createdAt: updated.created_at * 1000,
+        updatedAt: updated.updated_at * 1000
+      };
+
+      res.status(200).json({ success: true, data: out, message: '商品已下架' } as ApiResponse<Product>);
+      return;
+    }
+
+    const { title, description, deliveryInfo, price, stock } = body as ProductCreateParams & Record<string, any>;
+
+    // 验证参数
+    if (!title || !description || !price || stock === undefined) {
+      res.status(400).json({ success: false, error: '缺少必要参数' });
+      return;
+    }
+
+    if (price <= 0) {
+      res.status(400).json({ success: false, error: '商品价格必须大于0' });
+      return;
+    }
+
+    if (stock < 0) {
+      res.status(400).json({ success: false, error: '库存数量不能为负数' });
+      return;
+    }
+
+    if (deliveryInfo && String(deliveryInfo).length > 500) {
+      res.status(400).json({ success: false, error: '发货信息过长' });
       return;
     }
 

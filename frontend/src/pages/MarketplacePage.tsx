@@ -17,7 +17,8 @@ import {
   getProductList,
   getPurchaseList,
   getTaskList,
-  purchaseProduct
+  purchaseProduct,
+  takeDownProduct
 } from '../services/api';
 import { createSignedRequest } from '../shared/utils/transaction-verification';
 import type { Product, Purchase, Task } from '@shared/types';
@@ -324,6 +325,26 @@ export function MarketplacePage() {
     }
   }
 
+  async function runSignedProductTakeDown(productId: string) {
+    const localWallet = wallet || loadWallet();
+    if (!localWallet) return;
+
+    const ok = await requestConfirm('确认操作', '确认下架该商品吗？下架后广场将不再展示，但已产生的订单不受影响。');
+    if (!ok) return;
+
+    const userSecret = getUserSecretForSigning();
+    if (!userSecret) return;
+
+    try {
+      const { headers } = await createSignedRequest({ action: 'take_down', productId }, localWallet.userHash, userSecret);
+      await takeDownProduct(productId, headers);
+      await loadProductsOrOrders();
+      showInfo('操作成功', '商品已下架');
+    } catch (err: any) {
+      showInfo('操作失败', err?.message || '请稍后重试');
+    }
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20 md:pb-0">
 
@@ -556,6 +577,10 @@ export function MarketplacePage() {
               { productId, quantity: qty },
               `确认下单 ${qty} 个商品，共￥${price * qty}？（将先托管扣除，确认后才转给卖家）`
             );
+            setDetail(null);
+          }}
+          onTakeDown={async (productId) => {
+            await runSignedProductTakeDown(productId);
             setDetail(null);
           }}
         />
@@ -1449,13 +1474,15 @@ function ProductDetailModal({
   currentUserHash,
   onClose,
   onReport,
-  onCreateOrder
+  onCreateOrder,
+  onTakeDown
 }: {
   product: Product;
   currentUserHash?: string;
   onClose: () => void;
   onReport: (productId: string, title: string) => void;
   onCreateOrder: (productId: string, stock: number, price: number) => Promise<void>;
+  onTakeDown: (productId: string) => Promise<void>;
 }) {
   function shortHash(hash: string | undefined | null): string {
     const value = String(hash || '');
@@ -1520,7 +1547,20 @@ function ProductDetailModal({
           <div className="text-xs text-slate-500 dark:text-slate-400">登录后可下单购买。</div>
         )}
         {isSeller && (
-          <div className="text-xs text-slate-500 dark:text-slate-400">这是你发布的商品。</div>
+          <div className="space-y-2">
+            <div className="text-xs text-slate-500 dark:text-slate-400">这是你发布的商品。</div>
+            {product.status !== 'removed' && (
+              <button
+                onClick={() => void onTakeDown(product.productId)}
+                className="w-full py-2.5 rounded-lg text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors"
+              >
+                下架商品
+              </button>
+            )}
+            {product.status === 'removed' && (
+              <div className="text-xs text-rose-600 dark:text-rose-200">该商品已下架，广场将不再展示。</div>
+            )}
+          </div>
         )}
       </div>
     </ModalShellWithClose>
