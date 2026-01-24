@@ -124,7 +124,7 @@ async function handleEvent(req: VercelRequest, res: VercelResponse) {
 
   if (body.kind === 'review_reward') {
     const { eventId, userHash } = body;
-    const amount = body.amount ?? 5;
+    const amount = body.amount ?? 10;
 
     if (!eventId || typeof eventId !== 'string') {
       res.status(400).json({ success: false, error: 'Missing eventId' } as ApiResponse);
@@ -266,6 +266,7 @@ async function handleSummary(req: VercelRequest, res: VercelResponse) {
       today: {
         reviewReward: Number(rewardRow?.sum || 0),
         likePendingDelta,
+        likePendingPoints: likePendingDelta * 3,
         likePendingPositive,
         likePendingNegative
       }
@@ -336,7 +337,8 @@ async function handleSettle(req: VercelRequest, res: VercelResponse) {
     for (const s of settlements) {
       await ensureWallet(s.userHash);
       const txId = generateTransactionId();
-      const metadata = { source: 'jcourse', kind: 'like_settlement', date, delta: s.delta };
+      const amount = s.delta * 3;
+      const metadata = { source: 'jcourse', kind: 'like_settlement', date, delta: s.delta, points: amount };
 
       await execute(
         `INSERT INTO transactions
@@ -345,7 +347,7 @@ async function handleSettle(req: VercelRequest, res: VercelResponse) {
         [
           txId,
           s.userHash,
-          s.delta,
+          amount,
           'YOURTJ 评课激励（点赞）',
           `YOURTJ 选课社区：${date} 点赞评课激励日结`,
           JSON.stringify(metadata),
@@ -355,12 +357,12 @@ async function handleSettle(req: VercelRequest, res: VercelResponse) {
       );
 
       await execute('UPDATE wallets SET balance = balance + ?, last_active_at = ? WHERE user_hash = ?', [
-        s.delta,
+        amount,
         now,
         s.userHash
       ]);
 
-      txIds.push({ userHash: s.userHash, txId, amount: s.delta });
+      txIds.push({ userHash: s.userHash, txId, amount });
     }
 
     await execute(
