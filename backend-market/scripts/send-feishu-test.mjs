@@ -1,12 +1,10 @@
 import crypto from 'node:crypto'
 
+const args = new Set(process.argv.slice(2))
+const dryRun = args.has('--dry-run') || args.has('--print')
+
 const webhookUrl = (process.env.FEISHU_WEBHOOK_URL || '').trim()
 const secret = (process.env.FEISHU_WEBHOOK_SECRET || '').trim()
-
-if (!webhookUrl) {
-  console.error('Missing FEISHU_WEBHOOK_URL')
-  process.exit(1)
-}
 
 const FEISHU_CARD_LOGO_IMG_KEY = 'img_v3_02u9_4ca7644a-997d-4963-9d6a-30043ca697eg'
 
@@ -127,6 +125,16 @@ if (secret) {
   payload.sign = signFeishu(timestamp, secret)
 }
 
+if (dryRun) {
+  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+  process.exit(0)
+}
+
+if (!webhookUrl) {
+  console.error('Missing FEISHU_WEBHOOK_URL (or run with --dry-run)')
+  process.exit(1)
+}
+
 const res = await fetch(webhookUrl, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -142,4 +150,3 @@ if (!res.ok) {
 
 console.log(`Sent. HTTP ${res.status}`)
 console.log(text.slice(0, 500))
-
