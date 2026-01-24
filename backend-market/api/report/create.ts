@@ -21,6 +21,8 @@ type FeishuSendResult = {
 };
 type FeishuField = { label: string; value: string; short?: boolean; style?: 'code' | 'text' };
 
+const FEISHU_CARD_LOGO_IMG_KEY = 'img_v3_02u9_4ca7644a-997d-4963-9d6a-30043ca697eg';
+
 function getFeishuConfig(): FeishuConfig | null {
   const webhookUrl = (process.env.FEISHU_WEBHOOK_URL || '').trim();
   const secret = (process.env.FEISHU_WEBHOOK_SECRET || '').trim();
@@ -99,39 +101,104 @@ function buildFeishuInteractiveBody(
 ) {
   const timestamp = String(Math.floor(Date.now() / 1000));
 
-  const fields = payload.fields
+  const normalizedFields = payload.fields
     .filter((f) => f && String(f.label || '').trim())
     .map((f) => {
       const style = f.style || 'code';
       const raw = String(f.value ?? '').trim();
       const normalized = normalizeFeishuText(raw).replace(/`/g, '´').replace(/\r?\n/g, ' ').trim();
-      const value = style === 'code' ? shortId(normalized) : normalized.length > 240 ? `${normalized.slice(0, 238)}…` : normalized;
+      const value =
+        style === 'code'
+          ? shortId(normalized)
+          : normalized.length > 600
+            ? `${normalized.slice(0, 598)}…`
+            : normalized;
       const content = style === 'code' ? `**${f.label}**\n\`${value || '—'}\`` : `**${f.label}**\n${value || '—'}`;
-      return {
-        is_short: Boolean(f.short),
-        text: { tag: 'lark_md', content }
-      };
+      return { label: f.label, short: Boolean(f.short), content };
     });
+
+  const shortBlocks = normalizedFields.filter((f) => f.short);
+  const longBlocks = normalizedFields.filter((f) => !f.short);
+
+  const shortRows: any[] = [];
+  for (let i = 0; i < shortBlocks.length; i += 2) {
+    const left = shortBlocks[i];
+    const right = shortBlocks[i + 1];
+    shortRows.push({
+      tag: 'column_set',
+      horizontal_spacing: '8px',
+      columns: [
+        {
+          tag: 'column',
+          width: 'weighted',
+          weight: 1,
+          elements: [{ tag: 'markdown', content: left.content, text_align: 'left' }]
+        },
+        {
+          tag: 'column',
+          width: 'weighted',
+          weight: 1,
+          elements: right ? [{ tag: 'markdown', content: right.content, text_align: 'left' }] : []
+        }
+      ]
+    });
+  }
+
+  const bodyElements: any[] = [
+    {
+      tag: 'markdown',
+      content: `**有新的审核：${payload.title}**\n请在管理后台处理该条记录。`,
+      text_align: 'left'
+    },
+    { tag: 'hr' },
+    ...shortRows,
+    ...(longBlocks.length ? [{ tag: 'hr', margin: '4px 0px 0px 0px' }] : []),
+    ...longBlocks.map((f) => ({
+      tag: 'markdown',
+      content: f.content,
+      text_align: 'left',
+      margin: '4px 0px 0px 0px'
+    })),
+    { tag: 'hr' },
+    {
+      tag: 'action',
+      actions: [
+        {
+          tag: 'button',
+          type: 'primary',
+          text: { tag: 'plain_text', content: '进入后台审核' },
+          url: payload.adminUrl
+        }
+      ]
+    }
+  ];
 
   const body: any = {
     msg_type: 'interactive',
     card: {
-      config: { wide_screen_mode: true },
-      header: { title: { tag: 'plain_text', content: `有新的审批：${payload.title}` } },
-      elements: [
-        { tag: 'div', fields },
-        {
-          tag: 'action',
-          actions: [
-            {
-              tag: 'button',
-              type: 'primary',
-              text: { tag: 'plain_text', content: '进入后台审批' },
-              url: payload.adminUrl
-            }
-          ]
-        }
-      ]
+      schema: '2.0',
+      config: {
+        update_multi: true,
+        enable_forward: true,
+        width_mode: 'fill',
+        summary: { content: `新审核：${payload.title}` }
+      },
+      header: {
+        template: 'wathet',
+        icon: { tag: 'custom_icon', img_key: FEISHU_CARD_LOGO_IMG_KEY },
+        title: { tag: 'plain_text', content: 'YOURTJ Credit 新审核' },
+        subtitle: { tag: 'plain_text', content: payload.title },
+        padding: '12px 12px 12px 12px'
+      },
+      body: {
+        direction: 'vertical',
+        padding: '12px 12px 12px 12px',
+        horizontal_spacing: '8px',
+        vertical_spacing: '8px',
+        horizontal_align: 'left',
+        vertical_align: 'top',
+        elements: bodyElements
+      }
     }
   };
 
