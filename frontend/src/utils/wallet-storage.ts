@@ -28,6 +28,16 @@ export function saveWallet(walletInfo: MnemonicInfo): void {
     createdAt: Date.now()
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+  // 允许被其它站点（例如 YOURTJ 选课社区）以 iframe 方式嵌入时完成“无感绑定”
+  // 通过 postMessage 将钱包信息传给父窗口（父窗口自行决定是否保存）
+  try {
+    if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'yourtj-credit-wallet', wallet: data }, '*');
+    }
+  } catch {
+    // ignore
+  }
 }
 
 /**

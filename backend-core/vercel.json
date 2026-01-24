@@ -2,6 +2,10 @@
   "version": 2,
   "devCommand": "node dev-server.js",
   "rewrites": [
+    { "source": "/api/wordlist/token", "destination": "/api/wordlist?action=token" },
+    { "source": "/api/integration/jcourse/event", "destination": "/api/integration/jcourse?action=event" },
+    { "source": "/api/integration/jcourse/summary", "destination": "/api/integration/jcourse?action=summary" },
+    { "source": "/api/integration/jcourse/settle", "destination": "/api/integration/jcourse?action=settle" },
     { "source": "/api/admin/:path*", "destination": "/api/admin?slug=:path*" }
   ]
 }
