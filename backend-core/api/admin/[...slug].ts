@@ -303,8 +303,8 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
             horizontal_align: 'left',
             vertical_align: 'top',
             elements: [
-              { tag: 'markdown', content: `**发送时间**\\n${new Date().toLocaleString('zh-CN')}`, text_align: 'left' },
-              { tag: 'markdown', content: `**来源**\\n管理后台 /api/admin/webhook/test`, text_align: 'left' },
+              { tag: 'markdown', content: `**发送时间**\n${new Date().toLocaleString('zh-CN')}`, text_align: 'left' },
+              { tag: 'markdown', content: `**来源**\n管理后台 /api/admin/webhook/test`, text_align: 'left' },
               { tag: 'hr' },
               {
                 tag: 'button',
