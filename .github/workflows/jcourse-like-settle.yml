@@ -18,7 +18,7 @@ jobs:
       - name: Settle likes
         env:
           CREDIT_CORE_BASE: https://core.credit.yourtj.de
-          JCOURSE_INTEGRATION_SECRET: ${{ secrets.JCOURSE_INTEGRATION_SECRET }}
+          JCOURSE_INTEGRATION_SECRET: ${{ secrets.JCOURSE_INTEGRATION_SECRET || secrets.CREDIT_JCOURSE_SECRET }}
           INPUT_DATE: ${{ inputs.date }}
         run: |
           set -euo pipefail
@@ -41,4 +41,3 @@ jobs:
             -H "X-JCourse-Secret: ${JCOURSE_INTEGRATION_SECRET}" \
             --data "{\"date\":\"${DATE}\"}" \
             | tee settle-result.json
-

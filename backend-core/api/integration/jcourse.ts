@@ -56,6 +56,16 @@ function todayShanghai(): string {
   return `${y}-${m}-${d}`;
 }
 
+function prevShanghaiDate(date: string): string {
+  const startMs = new Date(`${date}T00:00:00+08:00`).getTime();
+  const prevMs = startMs - 24 * 60 * 60 * 1000;
+  const sh = new Date(prevMs + 8 * 60 * 60 * 1000);
+  const y = sh.getUTCFullYear();
+  const m = String(sh.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(sh.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function shanghaiDayRange(date: string): { startSec: number; endSec: number } {
   const startMs = new Date(`${date}T00:00:00+08:00`).getTime();
   const endMs = startMs + 24 * 60 * 60 * 1000;
@@ -106,6 +116,70 @@ async function createSystemRewardTx(opts: {
   ]);
 
   return txId;
+}
+
+async function settleLikesForUserDate(userHash: string, date: string) {
+  const { startSec, endSec } = shanghaiDayRange(date);
+
+  const rows = await query<any>(
+    `SELECT is_liked, settled_is_liked
+     FROM jcourse_review_likes
+     WHERE target_user_hash = ?
+       AND updated_at >= ? AND updated_at < ?
+       AND is_liked != settled_is_liked`,
+    [userHash, startSec, endSec]
+  );
+
+  let delta = 0;
+  let rowsCount = 0;
+  for (const r of rows || []) {
+    rowsCount += 1;
+    delta += Number((r as any).is_liked) - Number((r as any).settled_is_liked);
+  }
+
+  if (!Number.isFinite(delta) || delta === 0) return { settled: false as const, date, delta: 0, rows: rowsCount, amount: 0 };
+
+  const amount = delta * 3;
+  const now = Math.floor(Date.now() / 1000);
+
+  const txId = await transaction(async () => {
+    await ensureWallet(userHash);
+    const txId = generateTransactionId();
+    const metadata = { source: 'jcourse', kind: 'like_settlement', date, delta, points: amount };
+
+    await execute(
+      `INSERT INTO transactions
+       (tx_id, type_id, from_user_hash, to_user_hash, amount, status, title, description, metadata, created_at, completed_at)
+       VALUES (?, 5, NULL, ?, ?, 'completed', ?, ?, ?, ?, ?)`,
+      [
+        txId,
+        userHash,
+        amount,
+        'YOURTJ 评课激励（点赞）',
+        `YOURTJ 选课社区：${date} 点赞评课激励日结`,
+        JSON.stringify(metadata),
+        now,
+        now
+      ]
+    );
+
+    await execute('UPDATE wallets SET balance = balance + ?, last_active_at = ? WHERE user_hash = ?', [amount, now, userHash]);
+
+    await execute(
+      `UPDATE jcourse_review_likes
+       SET settled_is_liked = is_liked,
+           settled_at = ?,
+           last_settle_date = ?
+       WHERE target_user_hash = ?
+         AND updated_at >= ? AND updated_at < ?
+         AND is_liked != settled_is_liked`,
+      [now, date, userHash, startSec, endSec]
+    );
+
+    return txId;
+  });
+
+  return { settled: true as const, date, delta, rows: rowsCount, amount, txId };
 }
 
 async function handleEvent(req: VercelRequest, res: VercelResponse) {
@@ -223,7 +297,20 @@ async function handleSummary(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const date = parseDateParam(req.query.date as any) || todayShanghai();
+  const nowToday = todayShanghai();
+  const date = parseDateParam(req.query.date as any) || nowToday;
+
+  // 兜底：如果日结任务漏跑，用户第二天打开钱包时自动补结算“昨天”的点赞激励。
+  // 仅结算当前用户，避免首个访问者触发全站批量结算带来耗时。
+  if (date === nowToday) {
+    const yesterday = prevShanghaiDate(nowToday);
+    try {
+      await settleLikesForUserDate(userHash, yesterday);
+    } catch (e) {
+      console.error('[jcourse] auto settle likes failed:', e);
+    }
+  }
+
   const { startSec, endSec } = shanghaiDayRange(date);
 
   const wallet = await queryOne<any>('SELECT user_hash, balance FROM wallets WHERE user_hash = ? LIMIT 1', [userHash]);
